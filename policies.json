@@ -1,0 +1,623 @@
+{
+  "meta": {
+    "version": "2.0",
+    "description": "Sistema híbrido C+D: Clasificador de Régimen + Score de Calidad + Auditor",
+    "author": "Salvador + Claude",
+    "changes": [
+      {
+        "version": "2.0",
+        "description": "Rediseño completo: Guardián + Régimen + Score + Auditor + hooks BiLSTM"
+      }
+    ]
+  },
+  "hard_take_profit": {
+    "enabled": true,
+    "min_pnl_pct": 1.0,
+    "min_pos_1m": 0.75,
+    "min_score_tp": 10,
+    "pullback_from_max_pct": 0.2,
+    "sell_pct": 1.0,
+    "allowed_regimes": [
+      "LATERAL_DEFINIDO",
+      "LATERAL_DEBIL",
+      "CORRECCION",
+      "REBOTE_BAJISTA",
+      "BAJISTA_MODERADO",
+      "BAJISTA_DUDOSO"
+    ]
+  },
+  "guardian": {
+    "_comment": "Reglas absolutas. El score NO las mueve.",
+    "usdt_min_pct": 15.0,
+    "pnl_dia_min_pct": -5.0,
+    "leverage_block": "high",
+    "rules": [
+      {
+        "id": "G1",
+        "desc": "Capital mínimo",
+        "condition": "usdt_reserve_pct < 15",
+        "effect": "BLOCK_BUY"
+      },
+      {
+        "id": "G2",
+        "desc": "BTC disponible",
+        "condition": "btc_disponible == 0",
+        "effect": "BLOCK_SELL"
+      },
+      {
+        "id": "G3",
+        "desc": "Riesgo sistémico",
+        "condition": "leverage_risk == high",
+        "effect": "BLOCK_BUY"
+      },
+      {
+        "id": "G4",
+        "desc": "Stop del día",
+        "condition": "pnl_dia_pct <= -5.0",
+        "effect": "BLOCK_ALL"
+      }
+    ]
+  },
+  "regimen": {
+    "ema_alpha": 0.4,
+    "_comment_ema": "Suavizado EMA de direccion/conviccion antes de clasificar régimen. 0.4 ≈ 4 ticks de memoria. Sube para más respuesta, baja para más estabilidad.",
+    "direccion_weights": {
+      "_comment": "Cada variable aporta puntos a la dirección del mercado",
+      "trend_1d": {
+        "up": 15,
+        "flat-weak": 0,
+        "down": -15
+      },
+      "trend_4h": {
+        "up": 10,
+        "flat-weak": 0,
+        "down": -10
+      },
+      "trend_1h": {
+        "up": 8,
+        "flat-weak": 0,
+        "down": -8
+      },
+      "week_trend_pct": {
+        "strong_up": 7,
+        "mild_up": 3,
+        "mild_down": -3,
+        "strong_down": -7,
+        "thresholds": {
+          "strong": 2.0,
+          "mild": 0.0
+        }
+      },
+      "funding_rate": {
+        "strong_bull": 10,
+        "mild_bull": 4,
+        "mild_bear": -4,
+        "strong_bear": -10,
+        "thresholds": {
+          "strong_bull": 0.005,
+          "mild_bull": 0.0,
+          "mild_bear": -0.003
+        }
+      },
+      "imb_zone1": {
+        "strong_buy": 10,
+        "mild_buy": 5,
+        "neutral": 0,
+        "mild_sell": -5,
+        "strong_sell": -10,
+        "thresholds": {
+          "strong_buy": 0.5,
+          "mild_buy": 0.2,
+          "mild_sell": -0.2,
+          "strong_sell": -0.5
+        }
+      },
+      "leverage_risk": {
+        "low": 0,
+        "medium": -5,
+        "high": -15
+      },
+      "pos_1w": {
+        "fondo": 8,
+        "bajo": 3,
+        "alto": -3,
+        "techo": -8,
+        "thresholds": {
+          "fondo": 0.25,
+          "bajo": 0.5,
+          "alto": 0.75
+        }
+      },
+      "downside_1w_pct": {
+        "_comment": "downside_1w = pos_1w × weekly_range_pct. Mucho espacio = puede seguir bajando",
+        "poco": 5,
+        "medio": -3,
+        "mucho": -7,
+        "thresholds": {
+          "poco": 2.0,
+          "medio": 4.0
+        }
+      },
+      "near_support": {
+        "True": 5,
+        "False": 0
+      },
+      "near_resistance": {
+        "True": -5,
+        "False": 0
+      }
+    },
+    "conviccion_weights": {
+      "_comment": "Convicción: qué tan fuerte es la señal, independiente de dirección",
+      "alineacion_tf": {
+        "_comment": "Cuántos timeframes están alineados (1d, 4h, 1h)",
+        "3_alineados": 15,
+        "2_alineados": 8,
+        "1_alineado": 0,
+        "contradiccion": -8
+      },
+      "vol_state": {
+        "calm": -8,
+        "normal": 5,
+        "high": 10,
+        "chaos": 15
+      },
+      "speed_state": {
+        "low": 3,
+        "high": 8
+      },
+      "vol_confirms_trend": {
+        "True": 10,
+        "False": -8
+      },
+      "funding_abs": {
+        "_comment": "Valor absoluto del funding — señal fuerte en cualquier dirección",
+        "fuerte": 10,
+        "medio": 5,
+        "debil": 0,
+        "thresholds": {
+          "fuerte": 0.005,
+          "medio": 0.002
+        }
+      },
+      "imb_abs": {
+        "_comment": "Valor absoluto del imbalance",
+        "fuerte": 12,
+        "medio": 6,
+        "debil": 0,
+        "thresholds": {
+          "fuerte": 0.5,
+          "medio": 0.2
+        }
+      },
+      "leverage_risk": {
+        "low": 5,
+        "medium": 8,
+        "high": 15
+      },
+      "near_support_or_resistance": {
+        "True": 6,
+        "False": 0
+      }
+    },
+    "clasificacion": {
+      "_comment": "Matriz Dirección × Convicción → Régimen",
+      "ALCISTA_FUERTE": {
+        "dir_min": 50,
+        "conv_min": 40,
+        "max_lotes": 5,
+        "umbral_compra": 35
+      },
+      "ALCISTA_MODERADO": {
+        "dir_min": 20,
+        "conv_min": 40,
+        "max_lotes": 4,
+        "umbral_compra": 45
+      },
+      "ALCISTA_DUDOSO": {
+        "dir_min": 20,
+        "conv_min": 0,
+        "max_lotes": 3,
+        "umbral_compra": 55
+      },
+      "CORRECCION": {
+        "dir_min": 20,
+        "conv_max": 40,
+        "dir_max": 50,
+        "max_lotes": 2,
+        "umbral_compra": 65
+      },
+      "LATERAL_DEFINIDO": {
+        "dir_min": -20,
+        "dir_max": 20,
+        "conv_min": 35,
+        "max_lotes": 3,
+        "umbral_compra": 60
+      },
+      "LATERAL_DEBIL": {
+        "dir_min": -20,
+        "dir_max": 20,
+        "conv_max": 35,
+        "max_lotes": 2,
+        "umbral_compra": 70
+      },
+      "REBOTE_BAJISTA": {
+        "dir_min": -50,
+        "dir_max": -20,
+        "conv_max": 40,
+        "max_lotes": 1,
+        "umbral_compra": 75,
+        "_comment_max": "Bajado de 2 a 1 — no promediar en tendencia bajista"
+      },
+      "BAJISTA_MODERADO": {
+        "dir_min": -50,
+        "dir_max": -20,
+        "conv_min": 40,
+        "max_lotes": 1,
+        "umbral_compra": 85
+      },
+      "BAJISTA_FUERTE": {
+        "dir_max": -50,
+        "conv_min": 40,
+        "max_lotes": 0,
+        "umbral_compra": 100
+      },
+      "BAJISTA_DUDOSO": {
+        "dir_max": -50,
+        "conv_max": 40,
+        "max_lotes": 2,
+        "umbral_compra": 90
+      }
+    }
+  },
+  "scores": {
+    "compra": {
+      "_comment": "¿Es buen momento para entrar? 0-100",
+      "pos_1m": {
+        "fondo_extremo": {
+          "max": 0.03,
+          "pts": 30
+        },
+        "fondo": {
+          "max": 0.08,
+          "pts": 20
+        },
+        "zona_baja": {
+          "max": 0.2,
+          "pts": 10
+        },
+        "neutral": {
+          "min": 0.2,
+          "pts": 0
+        }
+      },
+      "pos_1h": {
+        "fondo_extremo": {
+          "max": 0.05,
+          "pts": 20
+        },
+        "fondo": {
+          "max": 0.15,
+          "pts": 12
+        },
+        "zona_baja": {
+          "max": 0.3,
+          "pts": 5
+        },
+        "neutral": {
+          "min": 0.3,
+          "pts": 0
+        },
+        "zona_alta": {
+          "_comment": "precio en tercio superior del rango 1h — espacio de subida limitado",
+          "min": 0.7,
+          "max": 0.85,
+          "pts": -8
+        },
+        "techo": {
+          "_comment": "precio en techo del rango 1h — casi sin espacio de subida",
+          "min": 0.85,
+          "pts": -18
+        }
+      },
+      "downside_1h_pct": {
+        "_comment": "Poco espacio para caer en 1h = buena entrada",
+        "muy_poco": {
+          "max": 0.3,
+          "pts": 15
+        },
+        "poco": {
+          "max": 0.6,
+          "pts": 8
+        },
+        "mucho": {
+          "min": 0.6,
+          "pts": 0
+        },
+        "demasiado": {
+          "_comment": "precio muy lejos del piso 1h — riesgo de caída grande",
+          "min": 2.0,
+          "pts": -12
+        }
+      },
+      "near_support": {
+        "True": 15,
+        "False": 0
+      },
+      "vol_confirms_trend": {
+        "confirma_subida": 10,
+        "confirma_bajada": 0,
+        "no_confirma": 5
+      },
+      "imb_zone1": {
+        "compradores": 10,
+        "neutro": 5,
+        "vendedores": 0,
+        "thresholds": {
+          "compradores": 0.3,
+          "vendedores": -0.3
+        }
+      },
+      "funding_puntual": {
+        "positivo": 10,
+        "negativo": 0,
+        "threshold": 0.0
+      }
+    },
+    "venta_tp": {
+      "_comment": "¿Es buen momento para tomar ganancia? 0-100",
+      "pnl_lote_pct": {
+        "grande": {
+          "min": 2.0,
+          "pts": 40
+        },
+        "bueno": {
+          "min": 1.5,
+          "pts": 25
+        },
+        "minimo": {
+          "min": 0.5,
+          "pts": 10,
+          "_comment": "Bajado de 1.0% a 0.5% — en mercados laterales suaves una ganancia de 0.5% ya vale tomar"
+        },
+        "no_aun": {
+          "max": 1.0,
+          "pts": 0
+        }
+      },
+      "pos_1m": {
+        "techo": {
+          "min": 0.85,
+          "pts": 20
+        },
+        "casi_techo": {
+          "min": 0.7,
+          "pts": 10
+        },
+        "neutral": {
+          "max": 0.7,
+          "pts": 0
+        }
+      },
+      "near_resistance": {
+        "True": 20,
+        "False": 0
+      },
+      "imb_zone1": {
+        "vendedores_llegando": -0.3,
+        "pts_vendedores": 15,
+        "neutro": 5,
+        "compradores": 0
+      },
+      "vol_chaos_subiendo": {
+        "True": 5,
+        "False": 0
+      },
+      "umbral_por_regimen": {
+        "_comment": "Score mínimo para disparar SELL_V1. Más bajo en regímenes laterales donde el movimiento es suave y el score nunca llega al umbral genérico de 35.",
+        "ALCISTA_FUERTE": 40,
+        "ALCISTA_MODERADO": 38,
+        "ALCISTA_DUDOSO": 35,
+        "CORRECCION": 32,
+        "LATERAL_DEFINIDO": 22,
+        "LATERAL_DEBIL": 20,
+        "REBOTE_BAJISTA": 28,
+        "BAJISTA_MODERADO": 25,
+        "BAJISTA_FUERTE": 20,
+        "BAJISTA_DUDOSO": 22,
+        "_default": 35
+      }
+    },
+    "venta_sl": {
+      "_comment": "¿Hay que cortar la pérdida? 0-100",
+      "pnl_lote_pct": {
+        "grave": {
+          "max": -2.0,
+          "pts": 50
+        },
+        "serio": {
+          "max": -1.5,
+          "pts": 30
+        },
+        "leve": {
+          "max": -1.0,
+          "pts": 15
+        },
+        "ok": {
+          "min": -1.0,
+          "pts": 0
+        }
+      },
+      "regimen_bajista_fuerte": {
+        "True": 20,
+        "False": 0
+      },
+      "vol_chaos_bajando": {
+        "True": 15,
+        "False": 0
+      },
+      "funding_muy_negativo": {
+        "threshold": -0.005,
+        "pts": 10
+      },
+      "leverage_high": {
+        "True": 15,
+        "False": 0
+      }
+    }
+  },
+  "sizing": {
+    "_comment": "% del capital disponible a usar. Por régimen + rango de score",
+    "min_trade_usdt": 10.0,
+    "max_lotes_global": 4,
+    "_comment_max": "Máximo 4 lotes abiertos. Lote más barato=KEEPER, resto=COMÚN. Solo promedia hacia abajo. Override sobre max_lotes por régimen.",
+    "ALCISTA_FUERTE": {
+      "score_35_60": 0.2,
+      "score_60_80": 0.3,
+      "score_80_100": 0.4
+    },
+    "ALCISTA_MODERADO": {
+      "score_45_65": 0.15,
+      "score_65_80": 0.25,
+      "score_80_100": 0.35
+    },
+    "ALCISTA_DUDOSO": {
+      "score_55_70": 0.12,
+      "score_70_85": 0.2,
+      "score_85_100": 0.28
+    },
+    "CORRECCION": {
+      "score_65_80": 0.12,
+      "score_80_100": 0.2
+    },
+    "LATERAL_DEFINIDO": {
+      "score_60_75": 0.1,
+      "score_75_100": 0.2
+    },
+    "LATERAL_DEBIL": {
+      "score_70_85": 0.1,
+      "score_85_100": 0.15
+    },
+    "REBOTE_BAJISTA": {
+      "score_75_85": 0.15,
+      "score_85_100": 0.25
+    },
+    "BAJISTA_MODERADO": {
+      "score_85_95": 0.08,
+      "score_95_100": 0.12
+    },
+    "BAJISTA_FUERTE": {
+      "_comment": "No compra — umbral=100 es imposible"
+    },
+    "BAJISTA_DUDOSO": {
+      "score_90_100": 0.08
+    },
+    "tp_sizing": {
+      "_comment": "Qué % del lote vender en TP según contexto",
+      "ALCISTA_FUERTE": 1.0,
+      "ALCISTA_MODERADO": 1.0,
+      "ALCISTA_DUDOSO": 1.0,
+      "LATERAL_DEFINIDO": 1.0,
+      "LATERAL_DEBIL": 1.0,
+      "CORRECCION": 1.0,
+      "REBOTE_BAJISTA": 1.0,
+      "BAJISTA_MODERADO": 1.0,
+      "BAJISTA_FUERTE": 1.0,
+      "BAJISTA_DUDOSO": 1.0
+    }
+  },
+  "auditor": {
+    "_comment": "Valida y calibra la decisión del árbol. Hook para BiLSTM.",
+    "cambio_minimo": {
+      "_comment": "Antes de comprar, verificar que algo cambió desde la última compra",
+      "regimen_cambio": true,
+      "pos_1h_delta_min": 0.15,
+      "score_delta_min": 15,
+      "logica": "cumplir AL MENOS UNO de los tres"
+    },
+    "multiplicadores": {
+      "lotes_en_perdida_2_plus": 0.5,
+      "pnl_dia_lt_menos2": 0.7,
+      "score_lt_umbral_90pct": 0.6,
+      "pnl_dia_lt_menos4_sizing_min": 0.08
+    },
+    "veto_compra": {
+      "n_lotes_gte_max_regimen": true,
+      "pnl_dia_lt_stop": true
+    },
+    "bilstm_hook": {
+      "_comment": "Espacio reservado para modelo ML. Retorna multiplicador 0.5-1.5",
+      "enabled": false,
+      "model_path": null,
+      "feature_version": "v1"
+    }
+  },
+  "boveda": {
+    "_comment": "Reserva de BTC para largo plazo. 0 = desactivado",
+    "boveda_pct": 0.0,
+    "activar_cuando": "bot_demostrado_funcionamiento",
+    "descripcion": "% del lote más barato que nunca se vende"
+  },
+  "loop": {
+    "_comment": "El bot corre en dos velocidades — loop rápido para detectar eventos intra-vela, refresh lento para recalcular indicadores",
+    "fast_loop_s": 10,
+    "_comment_fast": "Cada 10s lee ticks y orderbook — detecta golpes bruscos de precio",
+    "ohlcv_refresh_s": 60,
+    "_comment_ohlcv": "Cada 60s refresca velas cerradas y recalcula todos los indicadores",
+    "intra_candle": {
+      "drop_pct_threshold": -0.3,
+      "_comment_drop": "Si el precio cae 0.3% en 30s → posible dip intra-vela → evaluar BUY-INTRA-DIP",
+      "spike_pct_threshold": 0.4,
+      "_comment_spike": "Si el precio sube 0.4% en 30s → posible spike intra-vela → evaluar SELL-INTRA-SPIKE",
+      "reference_window_s": 30,
+      "_comment_window": "Comparamos precio actual vs precio de hace 30s"
+    }
+  },
+  "regime_change_tp": {
+    "_comment": "TP escalado por magnitud del salto de régimen al alza. Jump = rank_actual - rank_anterior. Solo aplica cuando el régimen MEJORA.",
+    "enabled": true,
+    "hierarchy": {
+      "_comment": "0 = más bajista, 9 = más alcista",
+      "BAJISTA_FUERTE": 0,
+      "BAJISTA_DUDOSO": 1,
+      "BAJISTA_MODERADO": 2,
+      "REBOTE_BAJISTA": 3,
+      "LATERAL_DEBIL": 4,
+      "LATERAL_DEFINIDO": 5,
+      "CORRECCION": 6,
+      "ALCISTA_DUDOSO": 7,
+      "ALCISTA_MODERADO": 8,
+      "ALCISTA_FUERTE": 9
+    },
+    "thresholds_por_salto": {
+      "_comment": "PnL mínimo % del lote para ejecutar TP según cuántos niveles subió el régimen",
+      "1": 0.25,
+      "2": 0.3,
+      "3": 0.4,
+      "4": 0.5,
+      "5": 0.6,
+      "6_plus": 0.7
+    }
+  },
+  "symbol": "BTC/USDT",
+  "trailing_profit": {
+    "_comment": "Trailing stop sobre ganancia. Si el PnL del lote retrocede desde su máximo histórico más de 'retroceso_pct', se vende. Solo activa cuando pnl supera 'min_pnl_activacion_pct'.",
+    "enabled": true,
+    "min_pnl_activacion_pct": 0.5,
+    "_comment_min": "El trailing solo se activa cuando el lote llega a este PnL mínimo (0.5%). Por debajo de esto no se trackea máximo — evita vender dips normales de entrada.",
+    "retroceso_pct": 0.35,
+    "_comment_retroceso": "Si el PnL baja más de este % desde el máximo visto, vende. Ej: max=1.2%, retroceso=0.35% → vende si PnL cae a 0.85% o menos.",
+    "sell_pct": 1.0,
+    "_comment_sell": "Siempre vende el 100% del lote. El trailing es una salida de emergencia de ganancia."
+  },
+  "score_ema": {
+    "_comment": "EMA del score_compra para capturar señales sostenidas que nunca llegan al umbral exacto en un solo snapshot.",
+    "enabled": true,
+    "alpha": 0.35,
+    "_comment_alpha": "0.35 ≈ 5-6 loops de memoria. Más bajo = más lento pero más suave. Más alto = responde más rápido pero más ruidoso.",
+    "delta_umbral": 6,
+    "_comment_delta": "El EMA puede disparar compra si score_ema >= umbral - delta_umbral. Ej: umbral=70, delta=6 → EMA dispara con 64. Exige que además score_actual >= umbral - 12.",
+    "delta_score_actual": 12,
+    "_comment_delta2": "El score del snapshot actual también debe estar suficientemente alto (umbral - 12) para evitar que el EMA arrastre una compra cuando la señal ya se enfrió."
+  }
+}
