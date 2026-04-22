@@ -1,0 +1,65 @@
+{
+  "refresh_ts": 1776822750.39604,
+  "stats": {
+    "ALCISTA_MODERADO": {
+      "n_lotes": 42,
+      "has_enough_data": true,
+      "lifetime_median_min": 73,
+      "lifetime_p75_min": 186,
+      "lifetime_p90_min": 520,
+      "time_to_peak_p50_min": 57,
+      "time_to_peak_p75_min": 173,
+      "pnl_peak_p50": 0.332,
+      "pnl_peak_p75": 0.413,
+      "success_rate": 0.786,
+      "outcomes": {
+        "UNKNOWN": 42
+      }
+    },
+    "CORRECCION": {
+      "n_lotes": 26,
+      "has_enough_data": true,
+      "lifetime_median_min": 75,
+      "lifetime_p75_min": 238,
+      "lifetime_p90_min": 340,
+      "time_to_peak_p50_min": 68,
+      "time_to_peak_p75_min": 215,
+      "pnl_peak_p50": 0.265,
+      "pnl_peak_p75": 0.375,
+      "success_rate": 0.885,
+      "outcomes": {
+        "UNKNOWN": 26
+      }
+    },
+    "LATERAL_DEBIL": {
+      "n_lotes": 16,
+      "has_enough_data": true,
+      "lifetime_median_min": 69,
+      "lifetime_p75_min": 318,
+      "lifetime_p90_min": 436,
+      "time_to_peak_p50_min": 40,
+      "time_to_peak_p75_min": 318,
+      "pnl_peak_p50": 0.431,
+      "pnl_peak_p75": 0.531,
+      "success_rate": 0.938,
+      "outcomes": {
+        "UNKNOWN": 16
+      }
+    },
+    "LATERAL_DEFINIDO": {
+      "n_lotes": 20,
+      "has_enough_data": true,
+      "lifetime_median_min": 45,
+      "lifetime_p75_min": 218,
+      "lifetime_p90_min": 878,
+      "time_to_peak_p50_min": 45,
+      "time_to_peak_p75_min": 132,
+      "pnl_peak_p50": 0.277,
+      "pnl_peak_p75": 0.398,
+      "success_rate": 0.75,
+      "outcomes": {
+        "UNKNOWN": 20
+      }
+    }
+  }
+}
